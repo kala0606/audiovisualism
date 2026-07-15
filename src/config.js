@@ -17,6 +17,7 @@ const VJ = {
   autoRotate: false,       // periodic global rotation toggling
 
   activeScene: 0,          // index into Scenes.list (kept in sync by the manager)
+  lockKolamFamily: null,   // set from ?family=... — locks to one infinite Kolam family
 
   // Palette: ordered colour stops the artwork lerps between. Editable in the
   // console. Defaults to the current royal/red house palette.
@@ -54,5 +55,16 @@ function importPreset(json) {
     Object.assign(VJ, JSON.parse(json));
   } catch (e) {
     console.error('Bad preset:', e);
+  }
+}
+
+// URL-param overrides — one deployment can serve per-artist links.
+//   ?family=Mandala|Sikku|Labyrinth|Minimalist  → single infinite Kolam family
+function applyURLParams() {
+  const q = new URLSearchParams(location.search);
+  const fam = q.get('family');
+  if (fam && typeof Kolam !== 'undefined') {
+    const match = Object.keys(Kolam.FAMILIES).find((k) => k.toLowerCase() === fam.toLowerCase());
+    if (match) VJ.lockKolamFamily = match;
   }
 }

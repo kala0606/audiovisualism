@@ -4,19 +4,43 @@
 // scaled by DIM, rotated by avx, pulsed by ds, coloured from the palette and
 // audio-reactive in weight. Kolam scenes clear each frame (clearEveryFrame) so
 // the woven geometry stays crisp — the boids/grid/sine scenes keep the trails.
+//
+// Both scenes are INFINITE GENERATIVE: draw-in → hold → regenerate a fresh
+// pattern of the same family, forever. A ?family=... URL param (VJ.lockKolamFamily)
+// pins a link to a single family so one deployment can serve per-artist links.
 
 function registerKolamScenes() {
-  const FAMILIES = ['Mandala', 'Sikku', 'Minimalist', 'Labyrinth'];
+  // Generation params tuned per family (denser weave for Labyrinth).
+  const GEN = {
+    Mandala:    { sub: 0.7,  spa: 1.6 },
+    Sikku:      { sub: 0.75, spa: 1.6 },
+    Minimalist: { sub: 0.6,  spa: 1.4 },
+    Labyrinth:  { sub: 0.95, spa: 2.4 },
+  };
 
-  // Shared renderer: draws the current Kolam.strokes as a layered 3D mandala.
+  function genInto(ctx, family) {
+    ctx.family = family;
+    const g = GEN[family] || { sub: 0.7, spa: 1.6 };
+    Kolam.generate(family, g.sub, g.spa);
+    ctx.strokes = Kolam.strokes.slice();
+    ctx.baseSpin = random(TWO_PI);
+    ctx.startFrame = frameCount;
+  }
+
+  // Shared renderer: infinite generative — draws in, holds, regenerates forever.
   function drawKolam(ctx) {
+    const revealFrames = Math.max(45, 220 - VJ.tempo * 8);
+    const holdFrames = 80;
+    // Endless stream: once drawn-in and held, generate a fresh pattern.
+    if (frameCount - ctx.startFrame > revealFrames + holdFrames) {
+      genInto(ctx, ctx.family);
+    }
+
     const strokes = ctx.strokes;
     const n = strokes.length;
     const energy = filteredSignal[3];
 
-    // Progressive "drawing" reveal over a fixed window (~2.4s at tempo 10,
-    // faster at higher tempo), then holds at full — independent of stroke count.
-    const revealFrames = Math.max(45, 220 - VJ.tempo * 8);
+    // Progressive "drawing" reveal, then holds at full — independent of count.
     const t = (frameCount - ctx.startFrame) / revealFrames;
     const drawn = Math.min(n, Math.max(1, Math.floor(t * n)));
 
@@ -50,28 +74,22 @@ function registerKolamScenes() {
     }
   }
 
+  // "Kolam": symmetric mandala family (or the locked family from ?family=).
   Scenes.register({
     name: 'Kolam',
     clearEveryFrame: true,
     enter() {
-      this.fam = FAMILIES[Math.floor(random(3))]; // Mandala/Sikku/Minimalist (symmetric)
-      Kolam.generate(this.fam, 0.7, 1.6);
-      this.strokes = Kolam.strokes.slice();
-      this.baseSpin = random(TWO_PI);
-      this.startFrame = frameCount;
+      genInto(this, VJ.lockKolamFamily || 'Mandala');
     },
     draw() { drawKolam(this); },
   });
 
+  // "Kolam Weave": denser labyrinth field (or the locked family).
   Scenes.register({
     name: 'Kolam Weave',
     clearEveryFrame: true,
     enter() {
-      // Denser, deeper labyrinth weave for a busier, hypnotic field.
-      Kolam.generate('Labyrinth', 0.95, 2.4);
-      this.strokes = Kolam.strokes.slice();
-      this.baseSpin = random(TWO_PI);
-      this.startFrame = frameCount;
+      genInto(this, VJ.lockKolamFamily || 'Labyrinth');
     },
     draw() { drawKolam(this); },
   });

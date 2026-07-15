@@ -50,10 +50,18 @@ function setup() {
 
   registerHouseScenes();
   if (typeof registerKolamScenes === 'function') registerKolamScenes();
+  if (typeof applyURLParams === 'function') applyURLParams();
   applyMode(VJ.mode);
-  // Open on Kolam if present (showcase), else the configured default scene.
+
   const kIdx = Scenes.list.findIndex((s) => s.name === 'Kolam');
-  Scenes.enter(kIdx >= 0 ? kIdx : VJ.activeScene);
+  if (VJ.lockKolamFamily) {
+    // Per-artist link (?family=...): one infinite Kolam family, no scene cuts.
+    VJ.sceneChange = 'manual';
+    Scenes.enter(kIdx >= 0 ? kIdx : VJ.activeScene);
+  } else {
+    // Full app: open on Kolam as the showcase; scenes auto-cycle per the mode.
+    Scenes.enter(kIdx >= 0 ? kIdx : VJ.activeScene);
+  }
 
   if (typeof onEngineReady === 'function') onEngineReady();
   console.log('audiovisualism engine ready.');
