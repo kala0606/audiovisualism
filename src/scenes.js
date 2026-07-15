@@ -1,0 +1,113 @@
+// scenes.js — the SCENE LAYER.
+//
+// A scene is a small self-contained object:
+//   { name, enter(), draw() }
+// Scenes read only the "house bus" — filteredSignal[] (energy), ds (size),
+// avx (rotation phase) and the palette (clr1A/clr1B). That contract is what
+// keeps every scene coherent in form + speed, and what makes adding new ones
+// cheap. enter() (re)seeds the elements a scene needs; draw() renders a frame.
+//
+// The manager owns the active scene and the scene-change policy driven by
+// VJ.sceneChange ('timed' | 'manual' | 'audio').
+
+const Scenes = {
+  list: [],
+  index: 0,
+  lastSwitchFrame: 0,
+
+  register(scene) {
+    this.list.push(scene);
+    return this.list.length - 1;
+  },
+
+  current() {
+    return this.list[this.index];
+  },
+
+  enter(i) {
+    this.index = ((i % this.list.length) + this.list.length) % this.list.length;
+    this.lastSwitchFrame = frameCount;
+    VJ.activeScene = this.index;
+    const s = this.current();
+    if (s && s.enter) s.enter();
+  },
+
+  next() { this.enter(this.index + 1); },
+  prev() { this.enter(this.index - 1); },
+  randomCut() {
+    if (this.list.length <= 1) return this.enter(this.index);
+    let n = this.index;
+    while (n === this.index) n = Math.floor(random(this.list.length));
+    this.enter(n);
+  },
+
+  draw() {
+    const s = this.current();
+    if (s && s.draw) s.draw();
+  },
+
+  // Scene-change policy, evaluated once per frame after draw().
+  tick() {
+    if (VJ.sceneChange === 'timed') {
+      const everyFrames = Math.max(30, Math.round(VJ.sceneChangeEvery * 60));
+      if (frameCount - this.lastSwitchFrame >= everyFrames) this.randomCut();
+    } else if (VJ.sceneChange === 'audio') {
+      if (filteredSignal[3] > 1 && frameCount - this.lastSwitchFrame > 90 &&
+          frameCount % 30 === 0 && random() < 0.15) {
+        this.randomCut();
+      }
+    }
+    // 'manual' → no automatic cuts.
+
+    if (VJ.autoRotate && frameCount % 600 === 0) rotCray = !rotCray;
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Initial scenes — the house style ported from the original artwork. These are
+// the baseline; the "extend the vocabulary" scenes are added alongside later.
+// ---------------------------------------------------------------------------
+
+function registerHouseScenes() {
+  Scenes.register({
+    name: 'Boids + Grid',
+    enter() {
+      initializeBoids();
+      initializeGrid();
+    },
+    draw() {
+      updateAndDisplayBoids();
+      grid.update();
+      grid.display();
+    },
+  });
+
+  Scenes.register({
+    name: 'Boids + Sine',
+    enter() {
+      initializeBoids(30, height / 2);
+      initializeSine();
+    },
+    draw() {
+      sine.update();
+      sine.display();
+      updateAndDisplayBoids();
+    },
+  });
+
+  Scenes.register({
+    name: 'Full System',
+    enter() {
+      initializeBoids(30, height / 2);
+      initializeGrid();
+      initializeSine();
+    },
+    draw() {
+      sine.update();
+      sine.display();
+      grid.update();
+      grid.display();
+      updateAndDisplayBoids();
+    },
+  });
+}

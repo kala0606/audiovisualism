@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>audiovisualism</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.7.0/p5.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.7.0/addons/p5.sound.min.js"></script>
+</head>
+<body>
+  <!-- ── Console ──────────────────────────────────────────────────────── -->
+  <aside id="console" class="open">
+    <header class="con-head">
+      <div class="brand">
+        <span class="dot"></span>
+        <div>
+          <h1>audiovisualism</h1>
+          <p class="sub">visual console</p>
+        </div>
+      </div>
+    </header>
+
+    <section class="panel">
+      <h2>Mode</h2>
+      <div class="seg" id="modeSeg">
+        <button data-mode="auto" class="active">Auto</button>
+        <button data-mode="semi">Semi</button>
+        <button data-mode="manual">Manual</button>
+      </div>
+      <p class="hint" id="modeHint">Fully automatic — synthesised motion, timed cuts.</p>
+    </section>
+
+    <section class="panel">
+      <h2>Scene</h2>
+      <div class="scene-nav">
+        <button id="prevScene" class="ghost">‹</button>
+        <div class="scene-name"><span id="sceneName">—</span><em id="sceneIdx"></em></div>
+        <button id="nextScene" class="ghost">›</button>
+      </div>
+      <label class="row">
+        <span>Change</span>
+        <select id="sceneChange">
+          <option value="timed">Timed</option>
+          <option value="manual">Manual</option>
+          <option value="audio">On audio</option>
+        </select>
+      </label>
+      <label class="row" id="everyRow">
+        <span>Every <b id="everyVal">6.0</b>s</span>
+        <input type="range" id="everyRange" min="1" max="30" step="0.5" value="6" />
+      </label>
+    </section>
+
+    <section class="panel">
+      <h2>Motion</h2>
+      <label class="row">
+        <span>Tempo <b id="tempoVal">10</b></span>
+        <input type="range" id="tempoRange" min="1" max="20" value="10" />
+      </label>
+      <label class="row">
+        <span>Sensitivity <b id="sensVal">1.0</b></span>
+        <input type="range" id="sensRange" min="0.1" max="4" step="0.1" value="1" />
+      </label>
+      <label class="check"><input type="checkbox" id="rotChk" /> <span>Auto-rotate</span></label>
+    </section>
+
+    <section class="panel">
+      <h2>Audio input</h2>
+      <button id="startBtn" class="wide primary">Start audio</button>
+      <select id="inputSelect" disabled>
+        <option value="">Default (mic)</option>
+      </select>
+      <div class="meter"><div class="meter-fill" id="meterFill"></div></div>
+      <p class="status"><span class="led" id="micLed"></span><span id="micStatus">Mic off</span></p>
+    </section>
+
+    <footer class="con-foot">
+      <span class="kbd-hint">D debug · A next · Space cut</span>
+    </footer>
+  </aside>
+
+  <button id="toggleConsole" title="Toggle console">≡</button>
+
+  <!-- ── Engine ───────────────────────────────────────────────────────── -->
+  <script src="lib/boid.js"></script>
+  <script src="lib/whiteBoid.js"></script>
+  <script src="lib/grid.js"></script>
+  <script src="lib/sine.js"></script>
+  <script src="src/config.js"></script>
+  <script src="src/input.js"></script>
+  <script src="src/scenes.js"></script>
+  <script src="src/engine.js"></script>
+  <script src="src/console.js"></script>
+</body>
+</html>
