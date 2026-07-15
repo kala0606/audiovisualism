@@ -19,7 +19,6 @@
     tempoVal: $('tempoVal'),
     sensRange: $('sensRange'),
     sensVal: $('sensVal'),
-    rotChk: $('rotChk'),
     startBtn: $('startBtn'),
     inputSelect: $('inputSelect'),
     meterFill: $('meterFill'),
@@ -69,11 +68,6 @@
     VJ.sensitivity = parseFloat(this.value);
     el.sensVal.textContent = VJ.sensitivity.toFixed(1);
   });
-  el.rotChk.addEventListener('change', function () {
-    VJ.autoRotate = this.checked;
-    if (!this.checked) rotCray = false;
-  });
-
   // ── Audio ───────────────────────────────────────────────────────────────
   el.startBtn.addEventListener('click', async () => {
     try {
@@ -145,7 +139,6 @@
     el.tempoRange.value = VJ.tempo; el.tempoVal.textContent = VJ.tempo;
     el.sensRange.value = VJ.sensitivity; el.sensVal.textContent = VJ.sensitivity.toFixed(1);
     el.everyRange.value = VJ.sceneChangeEvery; el.everyVal.textContent = VJ.sceneChangeEvery.toFixed(1);
-    el.rotChk.checked = VJ.autoRotate;
     [...el.modeSeg.children].forEach((b) => b.classList.toggle('active', b.dataset.mode === VJ.mode));
     el.modeHint.textContent = MODE_HINTS[VJ.mode];
     syncSceneChange();

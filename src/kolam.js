@@ -22,7 +22,7 @@ const Kolam = {
   FAMILIES: {
     Sikku:      { gridCols: 7, symmetry: '4',    wts: [1, 2, 4, 8, 1, 1, 1, 1], maxDepth: 1 },
     Labyrinth:  { gridCols: 9, symmetry: 'none', wts: [0, 8, 1, 0, 3, 3, 3, 3], maxDepth: 0 },
-    Mandala:    { gridCols: 5, symmetry: '4',    wts: [1, 1, 6, 4, 1, 1, 1, 1], maxDepth: 2 },
+    Mandala:    { gridCols: 5, symmetry: '4',    wts: [1, 1, 6, 4, 1, 1, 1, 1], maxDepth: 1 },
     Minimalist: { gridCols: 5, symmetry: 'v',    wts: [4, 1, 2, 1, 2, 2, 2, 2], maxDepth: 1 },
   },
 

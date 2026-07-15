@@ -3,7 +3,7 @@
 // A scene is a small self-contained object:
 //   { name, enter(), draw() }
 // Scenes read only the "house bus" — filteredSignal[] (energy), ds (size),
-// avx (rotation phase) and the palette (clr1A/clr1B). That contract is what
+// ds (energy size factor). Kolam scenes carry their own per-family palette. That
 // keeps every scene coherent in form + speed, and what makes adding new ones
 // cheap. enter() (re)seeds the elements a scene needs; draw() renders a frame.
 //
@@ -62,56 +62,5 @@ const Scenes = {
       }
     }
     // 'manual' → no automatic cuts.
-
-    if (VJ.autoRotate && frameCount % 600 === 0) rotCray = !rotCray;
   },
 };
-
-// ---------------------------------------------------------------------------
-// Initial scenes — the house style ported from the original artwork. These are
-// the baseline; the "extend the vocabulary" scenes are added alongside later.
-// ---------------------------------------------------------------------------
-
-function registerHouseScenes() {
-  Scenes.register({
-    name: 'Boids + Grid',
-    enter() {
-      initializeBoids();
-      initializeGrid();
-    },
-    draw() {
-      updateAndDisplayBoids();
-      grid.update();
-      grid.display();
-    },
-  });
-
-  Scenes.register({
-    name: 'Boids + Sine',
-    enter() {
-      initializeBoids(30, height / 2);
-      initializeSine();
-    },
-    draw() {
-      sine.update();
-      sine.display();
-      updateAndDisplayBoids();
-    },
-  });
-
-  Scenes.register({
-    name: 'Full System',
-    enter() {
-      initializeBoids(30, height / 2);
-      initializeGrid();
-      initializeSine();
-    },
-    draw() {
-      sine.update();
-      sine.display();
-      grid.update();
-      grid.display();
-      updateAndDisplayBoids();
-    },
-  });
-}
