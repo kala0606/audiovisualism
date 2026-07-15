@@ -28,6 +28,10 @@ const Scenes = {
     this.index = ((i % this.list.length) + this.list.length) % this.list.length;
     this.lastSwitchFrame = frameCount;
     VJ.activeScene = this.index;
+    // Request a framebuffer clear on the next draw so scenes don't ghost into
+    // each other. Deferring to draw() guarantees it runs inside the GL cycle.
+    // (Within a scene we deliberately don't clear — that's the house trails.)
+    this.clearPending = true;
     const s = this.current();
     if (s && s.enter) s.enter();
   },

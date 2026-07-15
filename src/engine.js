@@ -49,6 +49,7 @@ function setup() {
   setColourTables();
 
   registerHouseScenes();
+  if (typeof registerExtraScenes === 'function') registerExtraScenes();
   applyMode(VJ.mode);
   Scenes.enter(VJ.activeScene);
 
@@ -73,7 +74,8 @@ function draw() {
   avx += filteredSignal[3] / 500.0;
   if (frameCount % 120 === 0) s = 1 + abs(noise(frameCount * 10) * 10);
 
-  // 3. Render active scene, then apply scene-change policy
+  // 3. Clear on a scene cut (deferred from Scenes.enter), then render
+  if (Scenes.clearPending) { background(0); Scenes.clearPending = false; }
   Scenes.draw();
   Scenes.tick();
 
