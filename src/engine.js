@@ -49,9 +49,11 @@ function setup() {
   setColourTables();
 
   registerHouseScenes();
-  if (typeof registerExtraScenes === 'function') registerExtraScenes();
+  if (typeof registerKolamScenes === 'function') registerKolamScenes();
   applyMode(VJ.mode);
-  Scenes.enter(VJ.activeScene);
+  // Open on Kolam if present (showcase), else the configured default scene.
+  const kIdx = Scenes.list.findIndex((s) => s.name === 'Kolam');
+  Scenes.enter(kIdx >= 0 ? kIdx : VJ.activeScene);
 
   if (typeof onEngineReady === 'function') onEngineReady();
   console.log('audiovisualism engine ready.');
@@ -74,8 +76,13 @@ function draw() {
   avx += filteredSignal[3] / 500.0;
   if (frameCount % 120 === 0) s = 1 + abs(noise(frameCount * 10) * 10);
 
-  // 3. Clear on a scene cut (deferred from Scenes.enter), then render
-  if (Scenes.clearPending) { background(0); Scenes.clearPending = false; }
+  // 3. Clear on a scene cut, or every frame for scenes that opt in (crisp,
+  //    no trails — e.g. Kolam). Then render the active scene.
+  const cs = Scenes.current();
+  if (Scenes.clearPending || (cs && cs.clearEveryFrame)) {
+    background(0);
+    Scenes.clearPending = false;
+  }
   Scenes.draw();
   Scenes.tick();
 
