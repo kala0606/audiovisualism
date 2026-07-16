@@ -10,19 +10,25 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 // ── Families: colour + generation params + base tube radius ─────────────────
+// Tubes are white; each family's identity comes from its LIGHTING rig
+// (key = main colour, fill = shadow tint, rim = edge glow, amb = ambient tint).
 const FAMILIES = [
-  { name: 'Mandala',    family: 'Mandala',    sub: 0.5,  spa: 1.5, color: 0xff5a6e, rad: 0.0034 },
-  { name: 'Sikku',      family: 'Sikku',      sub: 0.4,  spa: 1.4, color: 0xffc45c, rad: 0.0032 },
-  { name: 'Labyrinth',  family: 'Labyrinth',  sub: 0.6,  spa: 2.0, color: 0x7ce8e0, rad: 0.0038 },
-  { name: 'Minimalist', family: 'Minimalist', sub: 0.45, spa: 1.3, color: 0xeeeee8, rad: 0.0040 },
+  { name: 'Mandala',    family: 'Mandala',    sub: 0.5,  spa: 1.5, rad: 0.0034,
+    key: 0xff3a58, fill: 0x401018, rim: 0xff9a86, amb: 0x1c0a10 },
+  { name: 'Sikku',      family: 'Sikku',      sub: 0.4,  spa: 1.4, rad: 0.0032,
+    key: 0xffb020, fill: 0x3a2408, rim: 0xffe6a0, amb: 0x1c1608 },
+  { name: 'Labyrinth',  family: 'Labyrinth',  sub: 0.6,  spa: 2.0, rad: 0.0038,
+    key: 0x22c8c0, fill: 0x08303a, rim: 0x9affff, amb: 0x081e22 },
+  { name: 'Minimalist', family: 'Minimalist', sub: 0.45, spa: 1.3, rad: 0.0040,
+    key: 0xffffff, fill: 0x2a2a34, rim: 0xc8d4ff, amb: 0x14141c },
 ];
 
 const L = 5;              // planes in the corridor
 const SP = 850;           // spacing between planes (world units)
-const NEAR = 90;          // recycle a plane once it gets this close
+const NEAR = -260;        // recycle only after a plane has flown past the camera
 const FOV = 60;
 
-let renderer, scene, camera, keyLight;
+let renderer, scene, camera, keyLight, fillLight, rimLight, ambient;
 let planes = [];
 let curFam = FAMILIES[0];
 let W = 1200;
@@ -58,10 +64,8 @@ function buildKolamGeometry(fam) {
 
 function makeMesh() {
   const geo = buildKolamGeometry(curFam);
-  const mat = new THREE.MeshStandardMaterial({
-    color: curFam.color, roughness: 0.5, metalness: 0.2,
-    transparent: true, opacity: 1,
-  });
+  // White, opaque — all colour comes from the lights.
+  const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.42, metalness: 0.1 });
   const mesh = new THREE.Mesh(geo, mat);
   mesh.castShadow = true;
   mesh.receiveShadow = true;
@@ -72,7 +76,6 @@ function makeMesh() {
 function rebuildPlane(p) {
   p.mesh.geometry.dispose();
   p.mesh.geometry = buildKolamGeometry(curFam);
-  p.mesh.material.color.setHex(curFam.color);
 }
 
 function updateW() {
@@ -81,10 +84,18 @@ function updateW() {
   W = 2 * SP * Math.tan(vFOV / 2) * Math.max(1, aspect) * 1.16;
 }
 
+function setFamilyLights(fam) {
+  keyLight.color.setHex(fam.key);
+  fillLight.color.setHex(fam.fill);
+  rimLight.color.setHex(fam.rim);
+  ambient.color.setHex(fam.amb);
+}
+
 function setFamily(family) {
   const f = FAMILIES.find((x) => x.family === family);
   if (!f) return;
   curFam = f;
+  setFamilyLights(f);
   for (const p of planes) rebuildPlane(p);
 }
 
@@ -105,19 +116,30 @@ function init() {
   camera.position.set(0, 0, 0);
   camera.lookAt(0, 0, -1);
 
-  // Lighting: a key light (casts shadows) + soft fill.
-  keyLight = new THREE.DirectionalLight(0xffffff, 2.6);
-  keyLight.position.set(0.5, 0.9, 0.4);
+  // Lighting rig — colour + shadows come from here (tubes are white).
+  keyLight = new THREE.DirectionalLight(0xffffff, 3.2);
+  keyLight.position.set(900, 1600, 1000);
   keyLight.castShadow = true;
   keyLight.shadow.mapSize.set(2048, 2048);
-  keyLight.shadow.camera.near = 1;
-  keyLight.shadow.camera.far = 4000;
+  keyLight.shadow.camera.near = 100;
+  keyLight.shadow.camera.far = 6000;
   const sc = keyLight.shadow.camera;
-  sc.left = -1400; sc.right = 1400; sc.top = 1400; sc.bottom = -1400;
-  keyLight.shadow.bias = -0.0009;
+  sc.left = -1800; sc.right = 1800; sc.top = 1800; sc.bottom = -1800;
+  keyLight.shadow.bias = -0.0008;
   scene.add(keyLight);
-  scene.add(new THREE.HemisphereLight(0xffffff, 0x101014, 0.55));
-  scene.add(new THREE.AmbientLight(0x404048, 0.6));
+
+  fillLight = new THREE.DirectionalLight(0xffffff, 1.1);
+  fillLight.position.set(-1200, -500, 700);
+  scene.add(fillLight);
+
+  rimLight = new THREE.DirectionalLight(0xffffff, 2.4);
+  rimLight.position.set(200, 400, -1800);
+  scene.add(rimLight);
+
+  ambient = new THREE.AmbientLight(0xffffff, 0.35);
+  scene.add(ambient);
+
+  setFamilyLights(curFam);
 
   updateW();
   for (let i = 0; i < L; i++) {
@@ -164,8 +186,6 @@ function frame(nowMs) {
     if (p.dist <= NEAR) { p.dist += L * SP; rebuildPlane(p); }
     p.mesh.position.z = -p.dist;
     p.mesh.scale.setScalar(W);
-    // Fade a plane out as it passes the camera so it doesn't pop on recycle.
-    p.mesh.material.opacity = Math.min(1, Math.max(0, (p.dist - NEAR) / (SP * 0.5)));
   }
 
   // Full-app family cycling (locked links stay put).
