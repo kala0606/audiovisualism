@@ -19,6 +19,9 @@
     tempoVal: $('tempoVal'),
     sensRange: $('sensRange'),
     sensVal: $('sensVal'),
+    tempoRow: $('tempoRow'),
+    sensRow: $('sensRow'),
+    motionHint: $('motionHint'),
     startBtn: $('startBtn'),
     inputSelect: $('inputSelect'),
     meterFill: $('meterFill'),
@@ -43,7 +46,19 @@
     [...el.modeSeg.children].forEach((b) => b.classList.toggle('active', b === btn));
     el.modeHint.textContent = MODE_HINTS[mode];
     syncSceneChange();
+    updateMotion(mode);
   });
+
+  // Flight speed is FFT-driven. In Auto the synthesised beat sets the energy
+  // (Beat rate); in Semi/Manual the live audio does (Sensitivity). Show only
+  // the control that applies.
+  function updateMotion(mode) {
+    el.tempoRow.style.display = mode === 'auto' ? '' : 'none';
+    el.sensRow.style.display = mode === 'auto' ? 'none' : '';
+    el.motionHint.textContent = mode === 'auto'
+      ? 'Speed follows the synthesised beat.'
+      : 'Speed follows the live audio energy.';
+  }
 
   // ── Scene nav ───────────────────────────────────────────────────────────
   el.prevScene.addEventListener('click', () => { Scenes.prev(); refreshScene(); });
@@ -142,6 +157,7 @@
     [...el.modeSeg.children].forEach((b) => b.classList.toggle('active', b.dataset.mode === VJ.mode));
     el.modeHint.textContent = MODE_HINTS[VJ.mode];
     syncSceneChange();
+    updateMotion(VJ.mode);
     refreshScene();
 
     // Live meter + scene-name sync (scenes can auto-cut on their own).
