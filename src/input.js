@@ -54,20 +54,16 @@ const Input = {
     this.startMic(onOk, onErr, d && d.deviceId);
   },
 
-  // Called once per frame. Updates `energy`.
-  update(nowMs) {
-    if (VJ.motionSource === 'fake' || !this.live) {
-      const t = (nowMs / 1000) * (0.35 + VJ.tempo * 0.11);
-      const kick = Math.pow(Math.sin(t * Math.PI * 2) * 0.5 + 0.5, 5);
-      this.energy = kick * 40 + 6; // 6..46
-    } else {
-      this.analyser.getByteFrequencyData(this.data);
-      const n = Math.min(64, this.data.length);
-      let sum = 0;
-      for (let i = 2; i < n; i++) sum += this.data[i];
-      const avg = sum / (n - 2) / 255; // 0..1
-      this.energy = avg * 95 * VJ.sensitivity;
-    }
+  // Called once per frame. Updates `energy` from the live mic (0 when not live;
+  // three-app substitutes Perlin self-motion in that case).
+  update() {
+    if (!this.live) { this.energy = 0; return 0; }
+    this.analyser.getByteFrequencyData(this.data);
+    const n = Math.min(64, this.data.length);
+    let sum = 0;
+    for (let i = 2; i < n; i++) sum += this.data[i];
+    const avg = sum / (n - 2) / 255; // 0..1
+    this.energy = avg * 95 * VJ.sensitivity;
     return this.energy;
   },
 };
