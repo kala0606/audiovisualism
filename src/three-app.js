@@ -10,17 +10,18 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 // ── Families: colour + generation params + base tube radius ─────────────────
-// Tubes are white; each family's identity comes from its LIGHTING rig
-// (key = main colour, fill = shadow tint, rim = edge glow, amb = ambient tint).
+// Tubes are white; each family's identity is a 3-SHADE lighting scheme
+// (key + fill + rim are distinct shades of the family's palette). `rad` is the
+// single uniform tube width for that family.
 const FAMILIES = [
-  { name: 'Mandala',    family: 'Mandala',    sub: 0.5,  spa: 1.5, rad: 0.0034,
-    key: 0xff3a58, fill: 0x401018, rim: 0xff9a86, amb: 0x1c0a10 },
-  { name: 'Sikku',      family: 'Sikku',      sub: 0.4,  spa: 1.4, rad: 0.0032,
-    key: 0xffb020, fill: 0x3a2408, rim: 0xffe6a0, amb: 0x1c1608 },
-  { name: 'Labyrinth',  family: 'Labyrinth',  sub: 0.6,  spa: 2.0, rad: 0.0038,
-    key: 0x22c8c0, fill: 0x08303a, rim: 0x9affff, amb: 0x081e22 },
-  { name: 'Minimalist', family: 'Minimalist', sub: 0.45, spa: 1.3, rad: 0.0040,
-    key: 0xffffff, fill: 0x2a2a34, rim: 0xc8d4ff, amb: 0x14141c },
+  { name: 'Mandala',    family: 'Mandala',    sub: 0.5,  spa: 1.5, rad: 0.0036,
+    key: 0xff2d4a, fill: 0xb0286a, rim: 0xff8a3a, amb: 0x1a0810 }, // crimson / magenta / orange
+  { name: 'Sikku',      family: 'Sikku',      sub: 0.4,  spa: 1.4, rad: 0.0034,
+    key: 0xffa81f, fill: 0xc4571a, rim: 0xfff08a, amb: 0x1a1206 }, // amber / bronze / pale gold
+  { name: 'Labyrinth',  family: 'Labyrinth',  sub: 0.6,  spa: 2.0, rad: 0.0040,
+    key: 0x18b8b0, fill: 0x2060c0, rim: 0x8ffff0, amb: 0x06181e }, // teal / blue / cyan
+  { name: 'Minimalist', family: 'Minimalist', sub: 0.45, spa: 1.3, rad: 0.0044,
+    key: 0xffffff, fill: 0xd0b0ff, rim: 0xa8c8ff, amb: 0x14141e }, // white / lavender / cool blue
 ];
 
 const L = 5;              // planes in the corridor
@@ -39,23 +40,87 @@ const SPEED_K = 0.3;      // energy → forward step per frame
 const fract = (x) => x - Math.floor(x);
 const hash = (i) => fract(Math.sin(i * 12.9898) * 43758.5453);
 
-// Build one merged tube geometry (normalised, unit-square) for a family.
+const SAMP = 6;
+// Sample a bezier stroke into a small polyline (unit-square coords).
+function sampleStroke(s) {
+  const pts = [];
+  for (let k = 0; k <= SAMP; k++) {
+    const t = k / SAMP, u = 1 - t;
+    pts.push([
+      u * u * u * s.x1 + 3 * u * u * t * s.cx1 + 3 * u * t * t * s.cx2 + t * t * t * s.x2,
+      u * u * u * s.y1 + 3 * u * u * t * s.cy1 + 3 * u * t * t * s.cy2 + t * t * t * s.y2,
+    ]);
+  }
+  return pts;
+}
+const nkey = (p) => Math.round(p[0] * 2000) + '_' + Math.round(p[1] * 2000);
+
+// Merge strokes that share endpoints into continuous polyline chains, so a
+// kolam draws as a few long connected paths (like a single-line plot).
+function mergeToPaths(strokes) {
+  const items = strokes.map((s) => ({ pts: sampleStroke(s), used: false }));
+  const nodes = new Map();
+  const add = (k, i) => { (nodes.get(k) || nodes.set(k, []).get(k)).push(i); };
+  items.forEach((it, i) => { add(nkey(it.pts[0]), i); add(nkey(it.pts[it.pts.length - 1]), i); });
+
+  const findNext = (k) => {
+    const list = nodes.get(k) || [];
+    for (const i of list) if (!items[i].used) return i;
+    return -1;
+  };
+
+  const paths = [];
+  for (let si = 0; si < items.length; si++) {
+    if (items[si].used) continue;
+    items[si].used = true;
+    let chain = items[si].pts.slice();
+    let grew = true;
+    while (grew) { // extend the tail
+      grew = false;
+      const tk = nkey(chain[chain.length - 1]);
+      const ni = findNext(tk);
+      if (ni >= 0) {
+        items[ni].used = true;
+        const seg = items[ni].pts.slice();
+        if (nkey(seg[0]) !== tk) seg.reverse();
+        for (let j = 1; j < seg.length; j++) chain.push(seg[j]);
+        grew = true;
+      }
+    }
+    grew = true;
+    while (grew) { // extend the head
+      grew = false;
+      const hk = nkey(chain[0]);
+      const ni = findNext(hk);
+      if (ni >= 0) {
+        items[ni].used = true;
+        const seg = items[ni].pts.slice();
+        if (nkey(seg[seg.length - 1]) !== hk) seg.reverse();
+        chain = seg.slice(0, seg.length - 1).concat(chain);
+        grew = true;
+      }
+    }
+    paths.push(chain);
+  }
+  return paths;
+}
+
+// Build one merged tube geometry (normalised) — continuous paths, ONE width.
 function buildKolamGeometry(fam) {
   Kolam.generate(fam.family, fam.sub, fam.spa);
-  const strokes = Kolam.strokes;
+  const paths = mergeToPaths(Kolam.strokes);
   const geoms = [];
-  for (let i = 0; i < strokes.length; i++) {
-    const s = strokes[i];
-    const h = hash(i);
-    const z = (h - 0.5) * 0.035; // slight depth relief → self-shadowing
-    const curve = new THREE.CubicBezierCurve3(
-      new THREE.Vector3(s.x1, -s.y1, z),
-      new THREE.Vector3(s.cx1, -s.cy1, z),
-      new THREE.Vector3(s.cx2, -s.cy2, z),
-      new THREE.Vector3(s.x2, -s.y2, z)
-    );
-    const r = fam.rad * (0.4 + 1.3 * h); // varying thickness
-    geoms.push(new THREE.TubeGeometry(curve, 10, r, 6, false));
+  for (let ci = 0; ci < paths.length; ci++) {
+    const pts = paths[ci];
+    const closed = pts.length > 3 && nkey(pts[0]) === nkey(pts[pts.length - 1]);
+    const z = (hash(ci) - 0.5) * 0.05; // per-chain relief (constant → stays continuous)
+    const n = closed ? pts.length - 1 : pts.length;
+    const vecs = [];
+    for (let j = 0; j < n; j++) vecs.push(new THREE.Vector3(pts[j][0], -pts[j][1], z));
+    if (vecs.length < 2) continue;
+    const curve = new THREE.CatmullRomCurve3(vecs, closed, 'catmullrom', 0.5);
+    const tubular = Math.max(8, Math.min(700, vecs.length * 2));
+    geoms.push(new THREE.TubeGeometry(curve, tubular, fam.rad, 6, closed));
   }
   const merged = mergeGeometries(geoms, false);
   geoms.forEach((g) => g.dispose());
@@ -117,8 +182,8 @@ function init() {
   camera.lookAt(0, 0, -1);
 
   // Lighting rig — colour + shadows come from here (tubes are white).
-  keyLight = new THREE.DirectionalLight(0xffffff, 3.2);
-  keyLight.position.set(900, 1600, 1000);
+  keyLight = new THREE.DirectionalLight(0xffffff, 2.6);
+  keyLight.position.set(1000, 1500, 950);
   keyLight.castShadow = true;
   keyLight.shadow.mapSize.set(2048, 2048);
   keyLight.shadow.camera.near = 100;
@@ -128,15 +193,17 @@ function init() {
   keyLight.shadow.bias = -0.0008;
   scene.add(keyLight);
 
-  fillLight = new THREE.DirectionalLight(0xffffff, 1.1);
-  fillLight.position.set(-1200, -500, 700);
+  // Fill from the opposite side — a second, visible shade.
+  fillLight = new THREE.DirectionalLight(0xffffff, 1.8);
+  fillLight.position.set(-1300, -700, 600);
   scene.add(fillLight);
 
-  rimLight = new THREE.DirectionalLight(0xffffff, 2.4);
-  rimLight.position.set(200, 400, -1800);
+  // Rim from behind — the third shade, edge glow.
+  rimLight = new THREE.DirectionalLight(0xffffff, 2.2);
+  rimLight.position.set(100, 700, -1700);
   scene.add(rimLight);
 
-  ambient = new THREE.AmbientLight(0xffffff, 0.35);
+  ambient = new THREE.AmbientLight(0xffffff, 0.28);
   scene.add(ambient);
 
   setFamilyLights(curFam);
