@@ -15,6 +15,15 @@
     if (e.key === 'a' || e.key === 'A') toggle();
   });
 
+  // Sensitivity slider (doesn't start the mic when dragged).
+  const sens = document.getElementById('sensRange');
+  if (sens) {
+    sens.value = VJ.sensitivity;
+    const onSens = (e) => { e.stopPropagation(); VJ.sensitivity = parseFloat(sens.value); };
+    sens.addEventListener('input', onSens);
+    sens.addEventListener('pointerdown', (e) => e.stopPropagation());
+  }
+
   // First user gesture: start the mic so manual mode hears the music. (Auto
   // mode ignores it and self-animates regardless.)
   let micTried = false;

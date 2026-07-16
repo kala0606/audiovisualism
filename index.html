@@ -15,7 +15,13 @@
   </script>
 </head>
 <body>
-  <button id="autoToggle" title="Toggle self-animation (ignores audio)">AUTO · OFF</button>
+  <div id="hud">
+    <button id="autoToggle" title="Toggle self-animation (ignores audio)">AUTO · OFF</button>
+    <label id="sensCtl" title="Audio sensitivity">
+      <span>SENS</span>
+      <input type="range" id="sensRange" min="0.2" max="4" step="0.1" value="1" />
+    </label>
+  </div>
 
   <script src="src/config.js"></script>
   <script src="src/kolam.js"></script>
