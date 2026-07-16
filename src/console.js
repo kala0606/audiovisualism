@@ -43,11 +43,15 @@
     if (!btn) return;
     const mode = btn.dataset.mode;
     applyMode(mode);
-    [...el.modeSeg.children].forEach((b) => b.classList.toggle('active', b === btn));
+    syncModeUI(mode);
+  });
+
+  function syncModeUI(mode) {
+    [...el.modeSeg.children].forEach((b) => b.classList.toggle('active', b.dataset.mode === mode));
     el.modeHint.textContent = MODE_HINTS[mode];
     syncSceneChange();
     updateMotion(mode);
-  });
+  }
 
   // Flight speed is FFT-driven. In Auto the synthesised beat sets the energy
   // (Beat rate); in Semi/Manual the live audio does (Sensitivity). Show only
@@ -84,41 +88,34 @@
     el.sensVal.textContent = VJ.sensitivity.toFixed(1);
   });
   // ── Audio ───────────────────────────────────────────────────────────────
-  el.startBtn.addEventListener('click', async () => {
-    try {
-      if (typeof getAudioContext === 'function') await getAudioContext().resume();
-      Input.startMic(
-        () => {
-          setMic('on', 'Mic live');
-          el.startBtn.textContent = 'Audio live';
-          el.startBtn.disabled = true;
-          populateSources();
-        },
-        () => setMic('err', 'Mic failed')
-      );
-    } catch (err) {
-      console.error(err);
-      setMic('err', 'Mic error');
-    }
+  el.startBtn.addEventListener('click', () => {
+    // Starting audio also switches motion to live (Semi) if still in Auto.
+    if (VJ.mode === 'auto') { applyMode('semi'); syncModeUI('semi'); }
+    Input.startMic(
+      () => {
+        setMic('on', 'Mic live');
+        el.startBtn.textContent = 'Audio live';
+        el.startBtn.disabled = true;
+        populateSources();
+      },
+      () => setMic('err', 'Mic failed')
+    );
   });
 
-  el.inputSelect.addEventListener('change', async function () {
+  el.inputSelect.addEventListener('change', function () {
     const index = parseInt(this.value, 10);
     if (isNaN(index)) return;
-    if (typeof getAudioContext === 'function') await getAudioContext().resume();
     Input.setSource(index, () => setMic('on', 'Mic live'), () => setMic('err', 'Switch failed'));
   });
 
   async function populateSources() {
     try {
       const sources = await Input.getSources();
-      const cur = (Input.mic && typeof Input.mic.currentSource === 'number') ? Input.mic.currentSource : 0;
       el.inputSelect.innerHTML = '';
       sources.forEach((d, i) => {
         const o = document.createElement('option');
         o.value = i;
         o.textContent = d.label || 'Input ' + (i + 1);
-        if (i === cur) o.selected = true;
         el.inputSelect.appendChild(o);
       });
       el.inputSelect.disabled = sources.length === 0;
@@ -163,7 +160,7 @@
     // Live meter + scene-name sync (scenes can auto-cut on their own).
     let lastIdx = -1;
     (function loop() {
-      const lvl = (typeof filteredSignal !== 'undefined' && filteredSignal[3]) || 0;
+      const lvl = (typeof Input !== 'undefined' && Input.energy) || 0;
       el.meterFill.style.width = Math.min(100, lvl * 2) + '%';
       if (Scenes.index !== lastIdx) { lastIdx = Scenes.index; refreshScene(); }
       requestAnimationFrame(loop);

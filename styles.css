@@ -27,6 +27,12 @@ html, body {
 
 canvas { display: block; }
 
+#gl {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+}
+
 /* ── Console shell ─────────────────────────────────────────────────────── */
 #console {
   position: fixed;

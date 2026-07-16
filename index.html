@@ -5,8 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>audiovisualism</title>
   <link rel="stylesheet" href="styles.css" />
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.7.0/p5.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.7.0/addons/p5.sound.min.js"></script>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
 </head>
 <body>
   <!-- ── Console ──────────────────────────────────────────────────────── -->
@@ -84,11 +90,9 @@
 
   <!-- ── Engine ───────────────────────────────────────────────────────── -->
   <script src="src/config.js"></script>
-  <script src="src/input.js"></script>
   <script src="src/kolam.js"></script>
-  <script src="src/scenes.js"></script>
-  <script src="src/scenes.kolam.js"></script>
-  <script src="src/engine.js"></script>
+  <script src="src/input.js"></script>
   <script src="src/console.js"></script>
+  <script type="module" src="src/three-app.js"></script>
 </body>
 </html>

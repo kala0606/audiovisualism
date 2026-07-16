@@ -1,102 +1,73 @@
-// input.js — the INPUT LAYER.
+// input.js — audio input on the Web Audio API (no p5).
 //
-// Produces a normalized signal each frame and publishes it onto the "house bus"
-// that every scene reads: the globals `filteredSignal[]` (per-band energy),
-// `micLevel`, plus `ds` and `avx` computed downstream from them.
-//
-// Sources are pluggable: 'fake' (synthesised beat, no audio needed) and 'audio'
-// (live FFT). MIDI slots in here later as another source. Multi-channel is
-// modelled now — `channels[]` holds N independent {level, bands[]} — even though
-// only channel 0 currently feeds the house bus. A band setup maps instruments to
-// channels; scenes will opt into channels in a later phase.
+// Publishes a single smoothed `energy` value (~0..50) that drives the flight
+// speed. In Auto mode a synthesised beat provides the energy (no mic needed);
+// in Semi/Manual the live mic/line-in does, via an AnalyserNode FFT.
 
 const Input = {
-  BANDS: 11,          // number of frequency bands the artwork expects
-  channels: [],       // [{ level, bands:[...] }]
-  mic: null,
-  fft: null,
-  _filterBuf: [],     // moving-average buffers, per band (audio smoothing)
+  ctx: null,
+  analyser: null,
+  data: null,
+  stream: null,
+  srcNode: null,
+  live: false,
+  energy: 0,
+  _devices: [],
 
-  setup() {
-    this.mic = new p5.AudioIn();
-    this.fft = new p5.FFT(0.8, 512);
-    this.fft.setInput(this.mic);
-    this.channels = [this._blankChannel()];
-    for (let i = 0; i < this.BANDS; i++) this._filterBuf[i] = [];
+  ensureCtx() {
+    if (this.ctx) return;
+    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    this.analyser = this.ctx.createAnalyser();
+    this.analyser.fftSize = 1024;
+    this.analyser.smoothingTimeConstant = 0.82;
+    this.data = new Uint8Array(this.analyser.frequencyBinCount);
   },
 
-  _blankChannel() {
-    return { level: 0, bands: new Array(this.BANDS).fill(0) };
-  },
-
-  // Called once per frame from the engine. Fills channel 0 and bridges it to the
-  // house bus (filteredSignal[], micLevel).
-  update() {
-    if (VJ.motionSource === 'fake') {
-      this._fakeBeat(this.channels[0]);
-    } else {
-      this._analyzeAudio(this.channels[0]);
-    }
-
-    const ch = this.channels[0];
-    for (let i = 0; i < this.BANDS; i++) filteredSignal[i] = ch.bands[i];
-    micLevel = ch.level;
-  },
-
-  // --- Fake source: a peaky kick envelope + slow wobble, tempo-scaled. -------
-  _fakeBeat(ch) {
-    const t = frameCount * 0.04 * (VJ.tempo / 6.0);
-    const kick = Math.pow(Math.sin(t) * 0.5 + 0.5, 5);
-    const wobble = noise(frameCount * 0.015);
-    const level = kick * 42 + wobble * 12;
-
-    for (let i = 0; i < this.BANDS; i++) {
-      const bandVar = 0.55 + 0.45 * noise(i * 5.3, frameCount * 0.02);
-      ch.bands[i] = level * bandVar;
-    }
-    ch.level = level / 100;
-  },
-
-  // --- Audio source: FFT -> banded, scaled, moving-average smoothed. ---------
-  _analyzeAudio(ch) {
-    ch.level = this.mic ? this.mic.getLevel() : 0;
-    const spectrum = this.fft.analyze();
-
-    const audioAmp = 40.0;
-    const audioMax = 100;
-    let indexAmp = 0.2;
-    const indexStep = 0.35;
-
-    for (let i = 0; i < this.BANDS; i++) {
-      const startBin = Math.floor(i * spectrum.length / this.BANDS);
-      const endBin = Math.floor((i + 1) * spectrum.length / this.BANDS);
-      let sum = 0;
-      for (let j = startBin; j < endBin; j++) sum += spectrum[j];
-      const avg = sum / Math.max(1, endBin - startBin);
-
-      let val = (avg / 255.0 * audioAmp) * indexAmp;
-      val = constrain(val, 0, audioMax) * 2.0 * VJ.sensitivity;
-      indexAmp += indexStep;
-
-      // moving-average smoothing (5-frame window)
-      const buf = this._filterBuf[i];
-      buf.push(val);
-      if (buf.length > 5) buf.shift();
-      ch.bands[i] = buf.reduce((a, b) => a + b, 0) / buf.length;
+  async startMic(onOk, onErr, deviceId) {
+    try {
+      this.ensureCtx();
+      await this.ctx.resume();
+      if (this.stream) this.stream.getTracks().forEach((t) => t.stop());
+      const audio = deviceId ? { deviceId: { exact: deviceId } } : true;
+      this.stream = await navigator.mediaDevices.getUserMedia({ audio });
+      if (this.srcNode) this.srcNode.disconnect();
+      this.srcNode = this.ctx.createMediaStreamSource(this.stream);
+      this.srcNode.connect(this.analyser);
+      this.live = true;
+      if (onOk) onOk();
+    } catch (e) {
+      this.live = false;
+      if (onErr) onErr(e);
     }
   },
 
-  // Live device selection (used by the console's input dropdown).
-  getSources() {
-    return this.mic ? this.mic.getSources() : Promise.resolve([]);
+  async getSources() {
+    const devs = await navigator.mediaDevices.enumerateDevices();
+    this._devices = devs
+      .filter((d) => d.kind === 'audioinput')
+      .map((d) => ({ label: d.label, deviceId: d.deviceId }));
+    return this._devices;
   },
+
   setSource(index, onOk, onErr) {
-    if (!this.mic) return;
-    this.mic.stop();
-    this.mic.setSource(index);
-    this.mic.start(onOk, onErr);
+    const d = this._devices[index];
+    this.startMic(onOk, onErr, d && d.deviceId);
   },
-  startMic(onOk, onErr) {
-    if (this.mic) this.mic.start(onOk, onErr);
+
+  // Called once per frame. Updates `energy`.
+  update(nowMs) {
+    if (VJ.motionSource === 'fake' || !this.live) {
+      const t = (nowMs / 1000) * (0.35 + VJ.tempo * 0.11);
+      const kick = Math.pow(Math.sin(t * Math.PI * 2) * 0.5 + 0.5, 5);
+      this.energy = kick * 40 + 6; // 6..46
+    } else {
+      this.analyser.getByteFrequencyData(this.data);
+      const n = Math.min(64, this.data.length);
+      let sum = 0;
+      for (let i = 2; i < n; i++) sum += this.data[i];
+      const avg = sum / (n - 2) / 255; // 0..1
+      this.energy = avg * 95 * VJ.sensitivity;
+    }
+    return this.energy;
   },
 };
