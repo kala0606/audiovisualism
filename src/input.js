@@ -12,7 +12,6 @@ const Input = {
   srcNode: null,
   live: false,
   energy: 0,
-  floor: 0,        // adaptive ambient noise floor
   _devices: [],
 
   ensureCtx() {
@@ -60,23 +59,11 @@ const Input = {
   update() {
     if (!this.live) { this.energy = 0; return 0; }
     this.analyser.getByteFrequencyData(this.data);
-
-    // Level from the mid band, skipping the lowest bins (fan rumble / subsonic).
-    const lo = 3, hi = Math.min(110, this.data.length);
+    const n = Math.min(64, this.data.length);
     let sum = 0;
-    for (let i = lo; i < hi; i++) sum += this.data[i];
-    const level = sum / (hi - lo) / 255; // 0..1
-
-    // Adaptive noise floor: a steady sound (a fan) is tracked out; only changes
-    // ABOVE the ambient floor — beats, claps, speech onsets — drive energy.
-    this.floor += (level - this.floor) * 0.04;
-    let dyn = level - this.floor;
-    if (dyn < 0.008) dyn = 0; // gate tiny fluctuations
-
-    const target = dyn * 320 * VJ.sensitivity;
-    // Fast attack, slower release for a musical envelope.
-    const rate = target > this.energy ? 0.55 : 0.12;
-    this.energy += (target - this.energy) * rate;
+    for (let i = 2; i < n; i++) sum += this.data[i];
+    const avg = sum / (n - 2) / 255; // 0..1
+    this.energy = avg * 95 * VJ.sensitivity;
     return this.energy;
   },
 };
