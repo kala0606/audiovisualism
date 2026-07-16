@@ -8,9 +8,6 @@
 
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
-import { AfterimagePass } from 'three/addons/postprocessing/AfterimagePass.js';
 
 // ── Families: colour + generation params + base tube radius ─────────────────
 const FAMILIES = [
@@ -25,11 +22,13 @@ const SP = 850;           // spacing between planes (world units)
 const NEAR = 90;          // recycle a plane once it gets this close
 const FOV = 60;
 
-let renderer, scene, camera, composer, after, keyLight;
+let renderer, scene, camera, keyLight;
 let planes = [];
 let curFam = FAMILIES[0];
 let W = 1200;
 let lastCut = 0;
+let travel = 0;           // cumulative distance flown — accumulates FFT energy
+const SPEED_K = 0.3;      // energy → forward step per frame
 
 const fract = (x) => x - Math.floor(x);
 const hash = (i) => fract(Math.sin(i * 12.9898) * 43758.5453);
@@ -128,11 +127,6 @@ function init() {
     planes.push(p);
   }
 
-  composer = new EffectComposer(renderer);
-  composer.addPass(new RenderPass(scene, camera));
-  after = new AfterimagePass(0.82); // motion blur (trails)
-  composer.addPass(after);
-
   window.addEventListener('resize', onResize);
 
   // Console API + family lock.
@@ -153,17 +147,20 @@ function onResize() {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
-  composer.setSize(window.innerWidth, window.innerHeight);
   updateW();
 }
 
 function frame(nowMs) {
   Input.update(nowMs || performance.now());
-  const energy = Input.energy;
-  const speed = 1.6 + energy * 0.3;
+
+  // Camera speed IS the music energy: accumulate it into forward travel.
+  // (Silent → still; loud → surges forward.) This is the integral of energy,
+  // not a function of time.
+  const step = Input.energy * SPEED_K;
+  travel += step;
 
   for (const p of planes) {
-    p.dist -= speed;
+    p.dist -= step;
     if (p.dist <= NEAR) { p.dist += L * SP; rebuildPlane(p); }
     p.mesh.position.z = -p.dist;
     p.mesh.scale.setScalar(W);
@@ -171,15 +168,13 @@ function frame(nowMs) {
     p.mesh.material.opacity = Math.min(1, Math.max(0, (p.dist - NEAR) / (SP * 0.5)));
   }
 
-  after.uniforms['damp'].value = 0.72 + Math.min(0.2, energy * 0.004);
-
   // Full-app family cycling (locked links stay put).
   if (!VJ.lockKolamFamily && VJ.sceneChange === 'timed') {
     const t = nowMs || performance.now();
     if (t - lastCut > VJ.sceneChangeEvery * 1000) { lastCut = t; window.Scenes.randomCut(); }
   }
 
-  composer.render();
+  renderer.render(scene, camera);
 }
 
 // Minimal Scenes API so the existing console keeps working.
