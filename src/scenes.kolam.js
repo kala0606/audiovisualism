@@ -1,34 +1,32 @@
-// scenes.kolam.js — one scene per Kolam family, each with its own colour scheme.
+// scenes.kolam.js — one scene per Kolam family, rendered as an INFINITE FLIGHT
+// through a corridor of kolams.
 //
-// Design: compose a full-frame kolam (resolution-independent, unit-square strokes
-// scaled to fill), draw it flat facing the camera — NO geometry rotation. The
-// only motion is a slow camera oscillation along Z plus a cast drop-shadow for
-// depth. Infinite generative: draw-in -> hold -> regenerate a fresh pattern.
+// Model: a stack of L kolam "planes" at increasing depth. The camera flies
+// straight forward at a constant speed (one direction — no oscillation). Each
+// frame every plane moves toward the camera; when one passes the near point it
+// recycles to the far end with a freshly generated kolam. Each plane is sized so
+// the nearest one always covers the whole viewport at any resolution/aspect —
+// full-bleed, no gaps, no visible border. Depth reads from perspective + fading.
 
 function registerKolamScenes() {
-  // Each family: generation params + its single baked colour scheme (light -> dark).
   const FAMILIES = [
-    {
-      name: 'Mandala', family: 'Mandala', sub: 0.55, spa: 1.5,
-      palette: [[255, 96, 110], [206, 32, 58], [104, 16, 30], [12, 4, 6]], // crimson/rose
-    },
-    {
-      name: 'Sikku', family: 'Sikku', sub: 0.6, spa: 1.5,
-      palette: [[255, 196, 92], [214, 120, 38], [110, 44, 18], [10, 6, 3]], // gold/amber
-    },
-    {
-      name: 'Labyrinth', family: 'Labyrinth', sub: 0.7, spa: 2.0,
-      palette: [[124, 232, 224], [36, 150, 176], [16, 54, 86], [4, 8, 16]], // cyan/teal
-    },
-    {
-      name: 'Minimalist', family: 'Minimalist', sub: 0.5, spa: 1.3,
-      palette: [[238, 238, 232], [150, 150, 148], [60, 60, 60], [8, 8, 8]], // mono
-    },
+    { name: 'Mandala', family: 'Mandala', sub: 0.55, spa: 1.5,
+      palette: [[255, 96, 110], [206, 32, 58], [104, 16, 30], [12, 4, 6]] },
+    { name: 'Sikku', family: 'Sikku', sub: 0.6, spa: 1.5,
+      palette: [[255, 196, 92], [214, 120, 38], [110, 44, 18], [10, 6, 3]] },
+    { name: 'Labyrinth', family: 'Labyrinth', sub: 0.7, spa: 2.0,
+      palette: [[124, 232, 224], [36, 150, 176], [16, 54, 86], [4, 8, 16]] },
+    { name: 'Minimalist', family: 'Minimalist', sub: 0.5, spa: 1.3,
+      palette: [[238, 238, 232], [150, 150, 148], [60, 60, 60], [8, 8, 8]] },
   ];
 
   const COL_N = 160;
+  const L = 5;              // planes in the corridor
+  const SP = 850;           // world-space spacing between planes
+  const NEAR = 70;          // recycle a plane once it gets this close
+  const FOV = Math.PI / 3;  // 60° vertical field of view
+  const TAN_H = Math.tan(FOV / 2);
 
-  // Build a smooth colour lookup table from a palette (light -> dark stops).
   function buildColTable(pal) {
     const len = pal.length, blk = Math.floor(COL_N / len), tbl = [];
     let cnt = -1;
@@ -42,59 +40,76 @@ function registerKolamScenes() {
     return tbl;
   }
 
-  function genInto(ctx) {
+  function genStrokes(ctx) {
     Kolam.generate(ctx.family, ctx.sub, ctx.spa);
-    ctx.strokes = Kolam.strokes.slice();
-    ctx.startFrame = frameCount;
+    return Kolam.strokes.slice();
   }
 
-  // Draw the revealed strokes once, at scale S. mode 'shadow' draws a dark,
-  // offset, slightly-back copy for the cast-shadow depth cue.
-  function drawStrokes(ctx, drawn, S, weight, mode) {
-    push();
-    if (mode === 'shadow') translate(11 * M, 13 * M, -32 * M);
+  function newLayer(ctx, dist) {
+    return { dist, strokes: genStrokes(ctx), tint: Math.floor(random(COL_N)) };
+  }
+
+  function drawFlight(ctx) {
+    const energy = filteredSignal[3];
+
+    // Camera at origin looking straight down -Z; planes live at z = -dist.
+    perspective(FOV, width / height, 1, 40000);
+    camera(0, 0, 0, 0, 0, -1, 0, 1, 0);
+
+    // Plane size so the NEAREST plane (dist <= SP) always covers the viewport,
+    // at any aspect ratio → full-bleed, resolution-independent.
+    const aspect = width / height;
+    const W = 2 * SP * TAN_H * Math.max(1, aspect) * 1.14;
+
+    // Constant forward speed (one direction), lightly nudged by audio + tempo.
+    const speed = (2.2 + VJ.tempo * 0.55) * (1 + energy * 0.015);
+    const maxDist = NEAR + L * SP;
+
+    // Advance and recycle planes.
+    for (const lyr of ctx.layers) {
+      lyr.dist -= speed;
+      if (lyr.dist <= NEAR) {
+        lyr.dist += L * SP;            // send to the far end
+        lyr.strokes = genStrokes(ctx); // a brand-new kolam gets "made" ahead
+        lyr.tint = Math.floor(random(COL_N));
+      }
+    }
+
+    // Draw far → near so nearer planes layer on top.
+    const order = ctx.layers.slice().sort((a, b) => b.dist - a.dist);
     noFill();
     strokeCap(ROUND);
     strokeJoin(ROUND);
-    strokeWeight(mode === 'shadow' ? weight * 1.5 : weight);
     const tbl = ctx.colTable, tn = tbl.length;
-    for (let i = 0; i < drawn; i++) {
-      const s = ctx.strokes[i];
-      if (mode === 'shadow') stroke(0, 0, 0, 130);
-      else stroke(tbl[(i * 3) % tn] || color(255));
-      if (s.type === 'bezier') {
-        bezier(s.x1 * S, s.y1 * S, s.cx1 * S, s.cy1 * S, s.cx2 * S, s.cy2 * S, s.x2 * S, s.y2 * S);
-      } else {
-        line(s.x1 * S, s.y1 * S, s.x2 * S, s.y2 * S);
+
+    for (const lyr of order) {
+      const dist = lyr.dist;
+      // Full brightness through the corridor; only ramp in at the far end and
+      // fade out in the last stretch before it passes the camera (no pop).
+      let a = 255;
+      a *= constrain(map(dist, maxDist, maxDist - SP * 0.6, 0, 1), 0, 1); // fade in far
+      a *= constrain(map(dist, NEAR, NEAR + 110, 0, 1), 0, 1);            // fade out near
+      if (a <= 2) continue;
+
+      const wt = constrain((SP * 1.05) / dist, 0.5, 3.4) * (1 + energy * 0.02);
+      push();
+      translate(0, 0, -dist);
+      strokeWeight(wt);
+      const strokes = lyr.strokes;
+      for (let i = 0; i < strokes.length; i++) {
+        const s = strokes[i];
+        const c = tbl[(i * 3 + lyr.tint) % tn] || color(255);
+        stroke(red(c), green(c), blue(c), a);
+        if (s.type === 'bezier') {
+          bezier(s.x1 * W, s.y1 * W, s.cx1 * W, s.cy1 * W, s.cx2 * W, s.cy2 * W, s.x2 * W, s.y2 * W);
+        } else {
+          line(s.x1 * W, s.y1 * W, s.x2 * W, s.y2 * W);
+        }
       }
+      pop();
     }
-    pop();
   }
 
-  function drawKolam(ctx) {
-    const revealFrames = Math.max(50, 200 - VJ.tempo * 6);
-    const holdFrames = 260; // let each composed kolam breathe a while
-    if (frameCount - ctx.startFrame > revealFrames + holdFrames) genInto(ctx);
-
-    const n = ctx.strokes.length;
-    const energy = filteredSignal[3];
-    const t = (frameCount - ctx.startFrame) / revealFrames;
-    const drawn = Math.min(n, Math.max(1, Math.floor(t * n)));
-
-    // Full-frame composition scale (unit square -> ~92% of the short side).
-    const S = DIM * 0.92;
-    // Slow camera oscillation along Z (a gentle breath), nudged a touch by audio.
-    const zBreath = sin(frameCount * 0.006) * 170 * M + energy * 2.2 * M;
-    const weight = Math.max(0.75, 1.15 + energy * 0.03);
-
-    push();
-    translate(0, 0, zBreath);
-    drawStrokes(ctx, drawn, S, weight, 'shadow');
-    drawStrokes(ctx, drawn, S, weight, 'main');
-    pop();
-  }
-
-  // Register one scene per family.
   for (const F of FAMILIES) {
     Scenes.register({
       name: F.name,
@@ -104,9 +119,13 @@ function registerKolamScenes() {
       clearEveryFrame: true,
       enter() {
         if (!this.colTable) this.colTable = buildColTable(F.palette);
-        genInto(this);
+        this.layers = [];
+        for (let i = 0; i < L; i++) {
+          // Spread evenly through the corridor.
+          this.layers.push(newLayer(this, NEAR + (i + 0.5) * SP));
+        }
       },
-      draw() { drawKolam(this); },
+      draw() { drawFlight(this); },
     });
   }
 }
